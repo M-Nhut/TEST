@@ -1,0 +1,246 @@
+{% extends "base.html" %}
+
+{% block title %}{{ 'Cập nhật' if exam else 'Tạo' }} Đề thi - EduCenter{% endblock %}
+{% block page_title %}{{ 'Chỉnh sửa đề thi' if exam else 'Tạo bài kiểm tra mới' }}{% endblock %}
+
+{% block content %}
+<div x-data="{
+  questions: [
+    {% if exam %}
+      {% for q in exam.questions %}
+      {
+        text: {{ q.question_text | tojson }},
+        type: {{ q.question_type | tojson }},
+        points: {{ q.points }},
+        answers: [
+          {% for a in q.answers %}
+          {
+            text: {{ a.answer_text | tojson }},
+            correct: {{ 'true' if a.is_correct else 'false' }}
+          }{% if not loop.last %},{% endif %}
+          {% endfor %}
+        ]
+      }{% if not loop.last %},{% endif %}
+      {% endfor %}
+    {% endif %}
+  ],
+  addQuestion() {
+    this.questions.push({
+      text: '',
+      type: 'single',
+      points: 1.0,
+      answers: [
+        {text: '', correct: false},
+        {text: '', correct: false},
+        {text: '', correct: false},
+        {text: '', correct: false}
+      ]
+    });
+  },
+  removeQuestion(qi) {
+    this.questions.splice(qi, 1);
+  },
+  addAnswer(qi) {
+    this.questions[qi].answers.push({text: '', correct: false});
+  },
+  removeAnswer(qi, ai) {
+    this.questions[qi].answers.splice(ai, 1);
+  },
+  changeType(q, type) {
+    q.type = type;
+    if (type === 'truefalse') {
+      q.answers = [
+        {text: 'Đúng', correct: true},
+        {text: 'Sai', correct: false}
+      ];
+    } else if (q.answers.length === 2 && (q.answers[0].text === 'Đúng' || q.answers[0].text === 'Sai')) {
+      q.answers = [
+        {text: '', correct: false},
+        {text: '', correct: false},
+        {text: '', correct: false},
+        {text: '', correct: false}
+      ];
+    }
+  }
+}" x-init="if(questions.length === 0) addQuestion()">
+
+  <div class="page-header">
+    <div class="page-title-area">
+      <p>Cổng quản trị học vụ</p>
+      <h1>{{ 'Chỉnh sửa đề thi' if exam else 'Tạo đề kiểm tra' }}</h1>
+    </div>
+    <div>
+      <a href="{{ url_for('exam_list') }}" class="btn btn-secondary">Quay lại</a>
+    </div>
+  </div>
+
+  <form method="POST">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+    <!-- Basic Exam Info -->
+    <div class="card">
+      <div class="card-header">
+        <h3 class="card-title">Thông tin bài kiểm tra</h3>
+      </div>
+      
+      <div class="form-grid-2">
+        <div class="form-group">
+          <label class="form-label" for="title">Tiêu đề đề thi *</label>
+          <input type="text" id="title" name="title" value="{{ exam.title if exam else '' }}" required placeholder="Ví dụ: Kiểm tra giữa kỳ môn Toán">
+        </div>
+        
+        <div class="form-group">
+          <label class="form-label" for="course_id">Lớp học / Khóa học *</label>
+          <select id="course_id" name="course_id" required>
+            <option value="">-- Chọn lớp học --</option>
+            {% for course in courses %}
+              <option value="{{ course.id }}" {% if exam and exam.course_id == course.id %}selected{% endif %}>
+                {{ course.course_name }}
+              </option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+
+      <div class="form-grid-3">
+        <div class="form-group">
+          <label class="form-label" for="duration_minutes">Thời gian làm bài (Phút) *</label>
+          <input type="number" id="duration_minutes" name="duration_minutes" value="{{ exam.duration_minutes if exam else 45 }}" min="5" required>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="start_time">Ngày mở đề thi</label>
+          <input type="datetime-local" id="start_time" name="start_time" value="{{ exam.start_time.strftime('%Y-%m-%dT%H:%M') if exam and exam.start_time else '' }}">
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="end_time">Hạn chót đóng đề</label>
+          <input type="datetime-local" id="end_time" name="end_time" value="{{ exam.end_time.strftime('%Y-%m-%dT%H:%M') if exam and exam.end_time else '' }}">
+        </div>
+      </div>
+
+      <div style="display:flex; flex-wrap:wrap; gap:var(--space-6); margin-top:var(--space-4)">
+        <label class="checkbox-label">
+          <input type="checkbox" name="shuffle_questions" value="1" {% if not exam or exam.shuffle_questions %}checked{% endif %}>
+          <span>Xáo trộn câu hỏi</span>
+        </label>
+        
+        <label class="checkbox-label">
+          <input type="checkbox" name="shuffle_answers" value="1" {% if not exam or exam.shuffle_answers %}checked{% endif %}>
+          <span>Xáo trộn đáp án</span>
+        </label>
+        
+        <label class="checkbox-label">
+          <input type="checkbox" name="is_active" value="1" {% if not exam or exam.is_active %}checked{% endif %}>
+          <span>Kích hoạt đề thi</span>
+        </label>
+      </div>
+    </div>
+
+    <!-- Question Builder Section -->
+    <div style="margin-bottom: var(--space-4)">
+      <h2 style="font-family: 'Fraunces', serif; margin-bottom: var(--space-4)">Nội dung câu hỏi</h2>
+      
+      <template x-for="(q, qi) in questions" :key="qi">
+        <div class="card" style="border-left:3px solid var(--accent); position:relative">
+          
+          <!-- Question Header controls -->
+          <div style="display:flex; align-items:center; gap:var(--space-3); margin-bottom:var(--space-4); flex-wrap:wrap">
+            <span style="font-size:var(--text-xs); font-weight:600; color:var(--text-3); text-transform:uppercase; letter-spacing:0.5px"
+                  x-text="'Câu ' + (qi+1)"></span>
+            
+            <select :name="'question_' + qi + '_type'" :value="q.type" @change="changeType(q, $event.target.value)" style="width:160px; height:32px; padding:2px var(--space-2)">
+              <option value="single">Một đáp án đúng</option>
+              <option value="multi">Nhiều đáp án đúng</option>
+              <option value="truefalse">Đúng / Sai</option>
+            </select>
+            
+            <div style="display:inline-flex; align-items:center; gap: var(--space-1)">
+              <label style="font-size: var(--text-xs); color: var(--text-2)">Điểm:</label>
+              <input type="number" :name="'question_' + qi + '_points'" x-model.number="q.points" min="0.5" step="0.5" style="width:70px; height:32px; padding:2px">
+            </div>
+
+            <button type="button" @click="removeQuestion(qi)"
+                    class="btn btn-ghost btn-sm btn-icon" style="margin-left:auto; color:var(--danger)"
+                    x-show="questions.length > 1" title="Xóa câu hỏi">
+              <i data-lucide="trash-2" style="width:14px;height:14px"></i>
+            </button>
+          </div>
+
+          <!-- Question Content Textarea -->
+          <div class="form-group">
+            <textarea :name="'question_' + qi + '_text'" x-model="q.text" rows="2" placeholder="Nội dung câu hỏi..." required></textarea>
+          </div>
+
+          <!-- Answer choices -->
+          <div style="margin-top: var(--space-4)">
+            <label class="form-label" style="font-size: var(--text-xs)">Danh sách đáp án lựa chọn</label>
+            
+            <template x-for="(ans, ai) in q.answers" :key="ai">
+              <div style="display:flex; align-items:center; gap:var(--space-2); margin-bottom:var(--space-2)">
+                
+                <!-- Correct indicator radio/checkbox -->
+                <template x-if="q.type === 'multi'">
+                  <label class="checkbox-label" style="margin-bottom:0">
+                    <input type="checkbox" :name="'question_' + qi + '_answer_' + ai + '_correct'" value="1" x-model="ans.correct" title="Đánh dấu đúng">
+                  </label>
+                </template>
+                
+                <template x-if="q.type !== 'multi'">
+                  <label class="checkbox-label" style="margin-bottom:0">
+                    <input type="radio" :name="'question_' + qi + '_correct'" :value="ai" :checked="ans.correct" @change="q.answers.forEach((a, i) => a.correct = (i === ai))" title="Đánh dấu đúng">
+                  </label>
+                </template>
+
+                <input type="text" :name="'question_' + qi + '_answer_' + ai + '_text'" x-model="ans.text" placeholder="Nội dung lựa chọn..." required style="flex:1">
+
+                <button type="button" @click="removeAnswer(qi, ai)"
+                        class="btn btn-ghost btn-icon btn-sm"
+                        style="color:var(--text-3)"
+                        x-show="q.type !== 'truefalse' && q.answers.length > 2" title="Xóa lựa chọn">
+                  <i data-lucide="minus" style="width:12px;height:12px"></i>
+                </button>
+              </div>
+            </template>
+
+            <button type="button" @click="addAnswer(qi)"
+                    class="btn btn-ghost btn-sm" style="margin-top:var(--space-2)"
+                    x-show="q.type !== 'truefalse'">
+              <i data-lucide="plus" style="width:12px;height:12px"></i>
+              Thêm phương án
+            </button>
+          </div>
+
+        </div>
+      </template>
+    </div>
+
+    <!-- Add Question button -->
+    <button type="button" @click="addQuestion()"
+            class="btn btn-secondary"
+            style="width:100%; padding:var(--space-4); border-style:dashed; margin-bottom:var(--space-6); justify-content:center">
+      <i data-lucide="plus-circle" style="width:16px;height:16px"></i>
+      Thêm câu hỏi mới vào đề
+    </button>
+
+    <!-- Form Submit buttons -->
+    <div style="display:flex; gap:var(--space-3)">
+      <button type="submit" class="btn btn-primary" onclick="lucide.createIcons()">
+        <i data-lucide="save" style="width:14px;height:14px"></i>
+        {{ 'Cập nhật đề thi' if exam else 'Tạo đề thi mới' }}
+      </button>
+      <a href="{{ url_for('exam_list') }}" class="btn btn-secondary">Hủy bỏ</a>
+    </div>
+
+  </form>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // Dynamic initialization of Lucide icons after Alpine inserts items
+  document.addEventListener('alpine:initialized', () => {
+    lucide.createIcons();
+  });
+</script>
+{% endblock %}
